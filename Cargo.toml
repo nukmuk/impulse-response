@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+hound = "3.5"
+thiserror = "2.0"
+
+[target.'cfg(windows)'.dependencies]
+wasapi = "0.23"
