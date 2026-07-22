@@ -24,16 +24,32 @@ trimmed independently, preserving cross-channel delays and leading zeros at exac
 
 ## CLI
 
+### Download a Windows binary
+
+Every push to `main` and every pull request targeting `main` is built and tested on Windows by
+GitHub Actions. Open the repository's **Actions** tab, select a successful **Windows build** run,
+and download the `rust-impulse-response-windows-x86_64-...` artifact. Extract the ZIP before
+running the executable.
+
+You can also build it locally with `cargo build --release`; the executable is written to
+`target\\release\\rust-impulse-response.exe`.
+
+### Capture
+
 List playback endpoints:
 
 ```powershell
 cargo run --release -- devices
+# Or, when using the downloaded binary:
+.\rust-impulse-response.exe devices
 ```
 
 Capture the default endpoint with the default two-second response window:
 
 ```powershell
 cargo run --release -- capture --output captured-filter
+# Or, when using the downloaded binary:
+.\rust-impulse-response.exe capture --output captured-filter
 ```
 
 Useful capture options:
@@ -48,6 +64,21 @@ Useful capture options:
 
 Keep other applications silent during capture because endpoint loopback includes other audio sent
 to the selected endpoint. A WASAPI discontinuity or invalid timestamp aborts the measurement.
+
+### Field checklist for a stereo (2×2) capture
+
+1. In Windows Sound settings, select the playback endpoint and sample rate you intend to use.
+2. Keep the software filter being measured enabled, close other audio applications, and run
+   `devices`. Confirm that the selected endpoint reports `2 channels`.
+3. Run `capture --output captured-filter`. For a non-default endpoint, also pass its exact
+   `--device-id`. Do not play other audio until capture finishes.
+4. Check that the command reports `with 2 channels`, a nonzero peak below `1.0`, and writes two
+   WAV files plus `equalizer-apo.txt`.
+5. Copy the whole `captured-filter` directory under Equalizer APO's `config` directory. Disable
+   the filter that was captured, then add `Include: captured-filter\\equalizer-apo.txt` to the
+   active Equalizer APO configuration.
+6. Open Equalizer APO's Configuration Editor and confirm that both convolution entries load
+   without errors. Test at low volume first with distinct left-only and right-only audio.
 
 ## Equalizer APO output
 

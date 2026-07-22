@@ -381,7 +381,7 @@ fn channel_labels(channels: usize, mask: u32) -> Vec<String> {
         (0x1, "L"),
         (0x2, "R"),
         (0x4, "C"),
-        (0x8, "SUB"),
+        (0x8, "LFE"),
         (0x10, "RL"),
         (0x20, "RR"),
         (0x40, "FLC"),
@@ -510,6 +510,6 @@ mod tests {
     #[test]
     fn channel_labels_follow_windows_speaker_mask_order() {
         assert_eq!(channel_labels(2, 0x3), ["L", "R"]);
-        assert_eq!(channel_labels(6, 0x3f), ["L", "R", "C", "SUB", "RL", "RR"]);
+        assert_eq!(channel_labels(6, 0x3f), ["L", "R", "C", "LFE", "RL", "RR"]);
     }
 }

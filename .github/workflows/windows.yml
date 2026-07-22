@@ -1,0 +1,44 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --locked --all-targets
+
+      - name: Build release binary
+        run: cargo build --locked --release
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-impulse-response-windows-x86_64-${{ github.sha }}
+          path: target/release/rust-impulse-response.exe
+          if-no-files-found: error
+          retention-days: 30
