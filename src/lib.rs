@@ -5,6 +5,7 @@
 
 mod error;
 mod export;
+mod impulse;
 mod matrix;
 mod schedule;
 
@@ -13,6 +14,7 @@ mod windows_audio;
 
 pub use error::{CaptureError, Result};
 pub use export::{ExportedBundle, export_equalizer_apo_bundle, render_equalizer_apo_config};
+pub use impulse::{PcmBitDepth, write_dirac_wav};
 pub use matrix::ImpulseMatrix;
 pub use schedule::{CaptureSchedule, extract_matrix};
 

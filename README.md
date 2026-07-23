@@ -80,6 +80,21 @@ Useful capture options:
 Keep other applications silent during capture because endpoint loopback includes other audio sent
 to the selected endpoint. A WASAPI discontinuity or invalid timestamp aborts the measurement.
 
+### Generate a manual Dirac impulse
+
+Generate a one-second mono integer-PCM WAV whose first sample is positive full scale and whose
+remaining samples are all exactly zero:
+
+```powershell
+.\rust-impulse-response.exe impulse `
+  --output dirac-48k-24bit.wav `
+  --sample-rate 48000 `
+  --bit-depth 24
+```
+
+Supported bit depths are 16, 24, and 32-bit integer PCM. The generator applies no dithering,
+noise, gain, filtering, fades, or normalization.
+
 ### Field checklist for a stereo (2×2) capture
 
 1. In Windows Sound settings, select the playback endpoint and sample rate you intend to use.

@@ -20,6 +20,21 @@ enum Command {
     /// List active Windows playback endpoints.
     Devices,
 
+    /// Generate a one-second mono full-scale Dirac impulse WAV without dithering.
+    Impulse {
+        /// Output WAV path.
+        #[arg(short, long, default_value = "dirac.wav")]
+        output: PathBuf,
+
+        /// WAV sample rate in Hz.
+        #[arg(long, default_value_t = 48_000)]
+        sample_rate: u32,
+
+        /// Integer PCM bit depth: 16, 24, or 32.
+        #[arg(long, default_value_t = rust_impulse_response::PcmBitDepth::Pcm24)]
+        bit_depth: rust_impulse_response::PcmBitDepth,
+    },
+
     /// Play sample-exact impulses, capture loopback, and export an APO bundle.
     Capture {
         /// Playback endpoint that receives the impulses. The default endpoint is used if omitted.
@@ -67,6 +82,20 @@ fn run(command: Command) -> Result<()> {
     };
 
     match command {
+        Command::Impulse {
+            output,
+            sample_rate,
+            bit_depth,
+        } => {
+            rust_impulse_response::write_dirac_wav(&output, sample_rate, bit_depth)
+                .with_context(|| format!("could not write {}", output.display()))?;
+            println!(
+                "Wrote {}: 1 second, mono, {} Hz, {}-bit integer PCM; sample 0 is positive full scale and all remaining samples are exactly zero.",
+                output.display(),
+                sample_rate,
+                bit_depth
+            );
+        }
         Command::Devices => {
             let devices = list_render_devices().context("could not enumerate playback devices")?;
             for device in devices {
@@ -130,5 +159,16 @@ fn run(command: Command) -> Result<()> {
 
 #[cfg(not(windows))]
 fn run(_command: Command) -> Result<()> {
-    anyhow::bail!("live software-filter capture currently requires Windows")
+    match _command {
+        Command::Impulse {
+            output,
+            sample_rate,
+            bit_depth,
+        } => {
+            rust_impulse_response::write_dirac_wav(&output, sample_rate, bit_depth)
+                .with_context(|| format!("could not write {}", output.display()))?;
+            Ok(())
+        }
+        _ => anyhow::bail!("live software-filter capture currently requires Windows"),
+    }
 }
