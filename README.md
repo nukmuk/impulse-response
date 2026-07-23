@@ -96,6 +96,25 @@ its relative paths remain valid. The endpoint sample rate must equal the WAV sam
 Disable the original captured filter before enabling its convolution replacement; otherwise both
 filters will be applied.
 
+## Experimental Windows GUI
+
+The `gui` directory contains a WinUI 3 frontend built with Windows Reactor. It uses the same
+capture and Equalizer APO export library as the CLI. Reactor is currently pinned as a Git
+submodule so GUI builds remain reproducible while that project is experimental.
+
+Clone and build it with:
+
+```powershell
+git clone --recurse-submodules https://github.com/nukmuk/rust-impulse-response.git
+cd rust-impulse-response
+cargo build --manifest-path gui/Cargo.toml --release
+./gui/package.ps1 -Profile release
+```
+
+Run `gui\target\package-release\rust-impulse-response-gui.exe` and keep everything in the
+`package-release` directory together. Pull requests also build and test this frontend, then
+publish the complete self-contained GUI directory as a GitHub Actions artifact.
+
 ## Limits
 
 - Only linear, time-invariant processing can be represented by an impulse response. Compressors,
