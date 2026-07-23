@@ -22,9 +22,15 @@ enum Command {
 
     /// Play sample-exact impulses, capture loopback, and export an APO bundle.
     Capture {
-        /// WASAPI endpoint ID. The default console playback endpoint is used if omitted.
+        /// Playback endpoint that receives the impulses. The default endpoint is used if omitted.
+        #[arg(long, visible_alias = "device-id")]
+        render_device_id: Option<String>,
+
+        /// Playback endpoint whose processed output is captured via WASAPI loopback.
+        ///
+        /// If omitted, loopback is captured from the render endpoint.
         #[arg(long)]
-        device_id: Option<String>,
+        capture_device_id: Option<String>,
 
         /// Directory for the WAV matrix and equalizer-apo.txt.
         #[arg(short, long, default_value = "captured-filter")]
@@ -72,7 +78,8 @@ fn run(command: Command) -> Result<()> {
             }
         }
         Command::Capture {
-            device_id,
+            render_device_id,
+            capture_device_id,
             output,
             probe_dbfs,
             lead_ms,
@@ -80,7 +87,8 @@ fn run(command: Command) -> Result<()> {
             tail_ms,
         } => {
             let settings = LiveCaptureSettings {
-                device_id,
+                render_device_id,
+                capture_device_id,
                 lead_time: Duration::from_millis(lead_ms),
                 response_time: Duration::from_millis(response_ms),
                 tail_time: Duration::from_millis(tail_ms),
@@ -94,10 +102,12 @@ fn run(command: Command) -> Result<()> {
                 .with_context(|| format!("could not export to {}", output.display()))?;
 
             println!(
-                "Captured {} at {} Hz with {} channels.",
-                capture.device.name,
+                "Rendered {} input channels to {} and captured {} output channels from {} at {} Hz.",
+                capture.matrix.input_channels().len(),
+                capture.render_device.name,
+                capture.matrix.output_channels().len(),
+                capture.capture_device.name,
                 capture.matrix.sample_rate(),
-                capture.matrix.output_channels().len()
             );
             println!(
                 "Peak: {:.3} ({:.2} dBFS)",

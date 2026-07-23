@@ -11,11 +11,13 @@ pub struct DeviceChoice {
     pub id: String,
     pub label: String,
     pub channels: u16,
+    pub sample_rate: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CaptureRequest {
-    pub device_id: String,
+    pub render_device_id: String,
+    pub capture_device_id: String,
     pub output_directory: String,
     pub probe_dbfs: f64,
     pub lead_ms: f64,
@@ -25,9 +27,11 @@ pub struct CaptureRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CaptureSummary {
-    pub device_name: String,
+    pub render_device_name: String,
+    pub capture_device_name: String,
     pub sample_rate: u32,
-    pub channels: usize,
+    pub input_channels: usize,
+    pub output_channels: usize,
     pub peak: f32,
     pub output_directory: PathBuf,
 }
@@ -36,10 +40,12 @@ impl CaptureSummary {
     pub fn message(&self) -> String {
         let peak_dbfs = 20.0 * self.peak.log10();
         let mut message = format!(
-            "Captured {} channels at {} Hz from {}. Peak: {:.2} dBFS. Bundle: {}",
-            self.channels,
+            "Sent {} channels to {} and captured {} channels from {} at {} Hz. Peak: {:.2} dBFS. Bundle: {}",
+            self.input_channels,
+            self.render_device_name,
+            self.output_channels,
+            self.capture_device_name,
             self.sample_rate,
-            self.device_name,
             peak_dbfs,
             self.output_directory.display()
         );
@@ -60,6 +66,7 @@ pub fn load_devices() -> Result<Vec<DeviceChoice>, String> {
         .map(|device| DeviceChoice {
             id: device.id,
             channels: device.channels,
+            sample_rate: device.sample_rate,
             label: format!(
                 "{}{} — {} Hz, {} channels",
                 device.name,
@@ -77,8 +84,11 @@ pub fn load_devices() -> Result<Vec<DeviceChoice>, String> {
 }
 
 pub fn validate_request(request: &CaptureRequest) -> Result<(), String> {
-    if request.device_id.trim().is_empty() {
-        return Err("Select a playback endpoint.".into());
+    if request.render_device_id.trim().is_empty() {
+        return Err("Select the playback endpoint that receives the impulses.".into());
+    }
+    if request.capture_device_id.trim().is_empty() {
+        return Err("Select the playback endpoint whose output will be captured.".into());
     }
     if request.output_directory.trim().is_empty() {
         return Err("Choose an output directory.".into());
@@ -103,7 +113,8 @@ pub fn run_capture(request: CaptureRequest) -> Result<CaptureSummary, String> {
 
     let output_directory = PathBuf::from(request.output_directory.trim());
     let settings = LiveCaptureSettings {
-        device_id: Some(request.device_id),
+        render_device_id: Some(request.render_device_id),
+        capture_device_id: Some(request.capture_device_id),
         lead_time: Duration::from_millis(request.lead_ms.round() as u64),
         response_time: Duration::from_millis(request.response_ms.round() as u64),
         tail_time: Duration::from_millis(request.tail_ms.round() as u64),
@@ -114,9 +125,11 @@ pub fn run_capture(request: CaptureRequest) -> Result<CaptureSummary, String> {
         .map_err(|error| error.to_string())?;
 
     Ok(CaptureSummary {
-        device_name: capture.device.name,
+        render_device_name: capture.render_device.name,
+        capture_device_name: capture.capture_device.name,
         sample_rate: capture.matrix.sample_rate(),
-        channels: capture.matrix.output_channels().len(),
+        input_channels: capture.matrix.input_channels().len(),
+        output_channels: capture.matrix.output_channels().len(),
         peak: capture.diagnostics.peak,
         output_directory,
     })
@@ -133,7 +146,8 @@ mod tests {
 
     fn valid_request() -> CaptureRequest {
         CaptureRequest {
-            device_id: "device".into(),
+            render_device_id: "virtual-device".into(),
+            capture_device_id: "physical-device".into(),
             output_directory: "captured-filter".into(),
             probe_dbfs: -24.0,
             lead_ms: 500.0,
@@ -145,6 +159,23 @@ mod tests {
     #[test]
     fn accepts_default_capture_settings() {
         assert_eq!(validate_request(&valid_request()), Ok(()));
+    }
+
+    #[test]
+    fn requires_both_playback_endpoints() {
+        let mut request = valid_request();
+        request.render_device_id.clear();
+        assert_eq!(
+            validate_request(&request),
+            Err("Select the playback endpoint that receives the impulses.".into())
+        );
+
+        request.render_device_id = "virtual-device".into();
+        request.capture_device_id.clear();
+        assert_eq!(
+            validate_request(&request),
+            Err("Select the playback endpoint whose output will be captured.".into())
+        );
     }
 
     #[test]

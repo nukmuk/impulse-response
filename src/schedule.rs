@@ -200,4 +200,27 @@ mod tests {
         assert_eq!(matrix.responses()[1][1][1], 1.0);
         assert_eq!(matrix.responses()[0][0][0], 0.0);
     }
+
+    #[test]
+    fn extraction_supports_different_input_and_output_channel_counts() {
+        let schedule = CaptureSchedule::new(48_000, 1, 4, 8, 2, -6.0).unwrap();
+        let amplitude = schedule.probe_amplitude();
+        let mut captured = vec![0.0; schedule.total_frames() * 2];
+        captured[(schedule.impulse_frames()[0] + 1) * 2] = amplitude;
+        captured[(schedule.impulse_frames()[0] + 3) * 2 + 1] = amplitude * 0.5;
+
+        let matrix = extract_matrix(
+            &captured,
+            vec!["L".into(), "R".into()],
+            vec!["C".into()],
+            &schedule,
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(matrix.input_channels(), ["C"]);
+        assert_eq!(matrix.output_channels(), ["L", "R"]);
+        assert_eq!(matrix.responses()[0][0][1], 1.0);
+        assert_eq!(matrix.responses()[0][1][3], 0.5);
+    }
 }

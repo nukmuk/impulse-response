@@ -9,18 +9,22 @@ or loudspeaker measurement tool.
 
 ## How the measurement works
 
-The program opens one continuous shared-mode render stream and a loopback capture stream on the
-same endpoint. It renders a known silent lead-in followed by one discrete Dirac impulse per input
-channel, with a fixed response window between impulses. Every output channel is recorded for
-every input impulse, producing an `outputs × inputs` matrix.
+The program opens one continuous shared-mode render stream on the selected source playback
+endpoint and a loopback capture stream on the selected destination playback endpoint. They may be
+the same endpoint, or separate endpoints in a routed DSP chain. It renders a known silent lead-in
+followed by one discrete Dirac impulse per input channel, with a fixed response window between
+impulses. Every destination output channel is recorded for every source input impulse, producing
+an `outputs × inputs` matrix.
 
 The default impulse is -24 dBFS. Its known amplitude is divided out during extraction, so this
 does not attenuate or normalize the exported filter. The lower probe level provides headroom for
 filters with positive gain.
 
-WASAPI packet timestamps establish one common relationship between the capture and render clocks.
-Integer capture-stream frame indices place all samples after that. Responses are never aligned or
-trimmed independently, preserving cross-channel delays and leading zeros at exact sample offsets.
+WASAPI packet timestamps and the shared Windows QPC timebase establish one common relationship
+between the capture and render clocks. Integer capture-stream frame indices place all samples
+after that. Responses are never aligned or trimmed independently, preserving transport latency,
+cross-channel delays, and leading zeros at exact sample offsets. The two endpoints must use the
+same sample rate.
 
 ## CLI
 
@@ -52,10 +56,21 @@ cargo run --release -- capture --output captured-filter
 .\rust-impulse-response.exe capture --output captured-filter
 ```
 
+Capture a routed correction application that receives audio on one playback endpoint and sends
+processed audio to another:
+
+```powershell
+.\rust-impulse-response.exe capture `
+  --render-device-id '<Virtual Audio Device ID>' `
+  --capture-device-id '<LCD TV ID>' `
+  --output captured-filter
+```
+
 Useful capture options:
 
 ```text
---device-id <ID>       Select a playback endpoint instead of the default
+--render-device-id <ID>   Endpoint that receives the impulses (alias: --device-id)
+--capture-device-id <ID>  Endpoint captured via loopback (default: render endpoint)
 --probe-dbfs <DBFS>    Probe level, no greater than 0 dBFS (default: -24)
 --lead-ms <MS>         Silence before the first impulse (default: 500)
 --response-ms <MS>     Samples retained for every matrix path (default: 2000)
@@ -68,12 +83,13 @@ to the selected endpoint. A WASAPI discontinuity or invalid timestamp aborts the
 ### Field checklist for a stereo (2×2) capture
 
 1. In Windows Sound settings, select the playback endpoint and sample rate you intend to use.
-2. Keep the software filter being measured enabled, close other audio applications, and run
-   `devices`. Confirm that the selected endpoint reports `2 channels`.
-3. Run `capture --output captured-filter`. For a non-default endpoint, also pass its exact
-   `--device-id`. Do not play other audio until capture finishes.
-4. Check that the command reports `with 2 channels`, a nonzero peak below `1.0`, and writes two
-   WAV files plus `equalizer-apo.txt`.
+2. Keep the software filter and its routing enabled, close other audio applications, and run
+   `devices`. Confirm that both source and destination endpoints report `2 channels` and the same
+   sample rate.
+3. Send impulses to the virtual source with `--render-device-id` and select the final physical
+   playback endpoint with `--capture-device-id`. Do not play other audio until capture finishes.
+4. Check that the command reports the intended source and destination, a nonzero peak below
+   `1.0`, and writes two WAV files plus `equalizer-apo.txt`.
 5. Copy the whole `captured-filter` directory under Equalizer APO's `config` directory. Disable
    the filter that was captured, then add `Include: captured-filter\\equalizer-apo.txt` to the
    active Equalizer APO configuration.
@@ -121,6 +137,7 @@ publish the complete self-contained GUI directory as a GitHub Actions artifact.
   limiters, gates, and time-varying effects cannot be reproduced exactly.
 - A delay shared identically by every matrix path cannot be distinguished conceptually from common
   pipeline latency. Channel-relative and path-relative delays remain intact.
+- The source and destination playback endpoints must have the same Windows mix sample rate.
 - Stereo is the first validated layout. The core and capture schedule support arbitrary endpoint
   channel counts, using Equalizer APO channel indices when a standard Windows speaker mask is not
   available.
