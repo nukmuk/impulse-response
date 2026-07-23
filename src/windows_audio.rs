@@ -29,6 +29,7 @@ pub struct LiveCaptureSettings {
     pub response_time: Duration,
     pub tail_time: Duration,
     pub probe_dbfs: f32,
+    pub trim_leading_silence: bool,
 }
 
 impl Default for LiveCaptureSettings {
@@ -40,6 +41,7 @@ impl Default for LiveCaptureSettings {
             response_time: Duration::from_secs(2),
             tail_time: Duration::from_millis(250),
             probe_dbfs: -24.0,
+            trim_leading_silence: true,
         }
     }
 }
@@ -50,6 +52,7 @@ pub struct CaptureDiagnostics {
     pub peak: f32,
     pub render_clock_origin_qpc: f64,
     pub clock_observations: usize,
+    pub trimmed_leading_frames: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -281,7 +284,12 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
 
     let input_labels = channel_labels(input_channel_count, input_channel_mask);
     let output_labels = channel_labels(output_channel_count, output_channel_mask);
-    let matrix = extract_matrix(&captured, output_labels, input_labels, &schedule, 0)?;
+    let mut matrix = extract_matrix(&captured, output_labels, input_labels, &schedule, 0)?;
+    let trimmed_leading_frames = if settings.trim_leading_silence {
+        matrix.trim_common_leading_silence()
+    } else {
+        0
+    };
 
     Ok(LiveCapture {
         render_device: render_description,
@@ -293,6 +301,7 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
             peak,
             render_clock_origin_qpc,
             clock_observations,
+            trimmed_leading_frames,
         },
     })
 }

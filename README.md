@@ -22,9 +22,10 @@ filters with positive gain.
 
 WASAPI packet timestamps and the shared Windows QPC timebase establish one common relationship
 between the capture and render clocks. Integer capture-stream frame indices place all samples
-after that. Responses are never aligned or trimmed independently, preserving transport latency,
-cross-channel delays, and leading zeros at exact sample offsets. The two endpoints must use the
-same sample rate.
+after that. By default, frames that are exactly silent across the entire matrix are removed from
+the beginning. The same frame count is removed from every path, preserving all cross-channel and
+path-relative delays. No path is ever aligned or trimmed independently. The two endpoints must
+use the same sample rate.
 
 ## CLI
 
@@ -75,6 +76,8 @@ Useful capture options:
 --lead-ms <MS>         Silence before the first impulse (default: 500)
 --response-ms <MS>     Samples retained for every matrix path (default: 2000)
 --tail-ms <MS>         Silence after the final window (default: 250)
+--no-trim-leading-silence
+                       Preserve common leading digital silence (trimming is on by default)
 ```
 
 Keep other applications silent during capture because endpoint loopback includes other audio sent
@@ -104,7 +107,7 @@ noise, gain, filtering, fades, or normalization.
 3. Send impulses to the virtual source with `--render-device-id` and select the final physical
    playback endpoint with `--capture-device-id`. Do not play other audio until capture finishes.
 4. Check that the command reports the intended source and destination, a nonzero peak below
-   `1.0`, and writes two WAV files plus `equalizer-apo.txt`.
+   `1.0`, the common trim applied, and writes two WAV files plus `equalizer-apo.txt`.
 5. Copy the whole `captured-filter` directory under Equalizer APO's `config` directory. Disable
    the filter that was captured, then add `Include: captured-filter\\equalizer-apo.txt` to the
    active Equalizer APO configuration.
@@ -151,7 +154,8 @@ publish the complete self-contained GUI directory as a GitHub Actions artifact.
 - Only linear, time-invariant processing can be represented by an impulse response. Compressors,
   limiters, gates, and time-varying effects cannot be reproduced exactly.
 - A delay shared identically by every matrix path cannot be distinguished conceptually from common
-  pipeline latency. Channel-relative and path-relative delays remain intact.
+  pipeline latency. Default leading-silence trimming removes that common latency while keeping all
+  channel-relative and path-relative delays intact. Use `--no-trim-leading-silence` to preserve it.
 - The source and destination playback endpoints must have the same Windows mix sample rate.
 - Stereo is the first validated layout. The core and capture schedule support arbitrary endpoint
   channel counts, using Equalizer APO channel indices when a standard Windows speaker mask is not

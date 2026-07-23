@@ -23,6 +23,7 @@ pub struct CaptureRequest {
     pub lead_ms: f64,
     pub response_ms: f64,
     pub tail_ms: f64,
+    pub trim_leading_silence: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +34,7 @@ pub struct CaptureSummary {
     pub input_channels: usize,
     pub output_channels: usize,
     pub peak: f32,
+    pub trimmed_leading_frames: usize,
     pub output_directory: PathBuf,
 }
 
@@ -52,6 +54,13 @@ impl CaptureSummary {
         if self.peak >= 1.0 {
             message
                 .push_str(" Warning: the capture reached 0 dBFS; repeat with a lower probe level.");
+        }
+        if self.trimmed_leading_frames > 0 {
+            message.push_str(&format!(
+                " Removed {} common leading-silence frames ({:.3} ms) from every matrix path.",
+                self.trimmed_leading_frames,
+                self.trimmed_leading_frames as f64 * 1000.0 / self.sample_rate as f64
+            ));
         }
         message
     }
@@ -119,6 +128,7 @@ pub fn run_capture(request: CaptureRequest) -> Result<CaptureSummary, String> {
         response_time: Duration::from_millis(request.response_ms.round() as u64),
         tail_time: Duration::from_millis(request.tail_ms.round() as u64),
         probe_dbfs: request.probe_dbfs as f32,
+        trim_leading_silence: request.trim_leading_silence,
     };
     let capture = measure_software_filter(&settings).map_err(|error| error.to_string())?;
     export_equalizer_apo_bundle(&output_directory, &capture.matrix)
@@ -131,6 +141,7 @@ pub fn run_capture(request: CaptureRequest) -> Result<CaptureSummary, String> {
         input_channels: capture.matrix.input_channels().len(),
         output_channels: capture.matrix.output_channels().len(),
         peak: capture.diagnostics.peak,
+        trimmed_leading_frames: capture.diagnostics.trimmed_leading_frames,
         output_directory,
     })
 }
@@ -153,6 +164,7 @@ mod tests {
             lead_ms: 500.0,
             response_ms: 2_000.0,
             tail_ms: 250.0,
+            trim_leading_silence: true,
         }
     }
 

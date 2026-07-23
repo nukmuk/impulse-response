@@ -66,6 +66,10 @@ enum Command {
         /// Silence after the final response window.
         #[arg(long, default_value_t = 250)]
         tail_ms: u64,
+
+        /// Preserve common leading digital silence instead of trimming it.
+        #[arg(long)]
+        no_trim_leading_silence: bool,
     },
 }
 
@@ -114,6 +118,7 @@ fn run(command: Command) -> Result<()> {
             lead_ms,
             response_ms,
             tail_ms,
+            no_trim_leading_silence,
         } => {
             let settings = LiveCaptureSettings {
                 render_device_id,
@@ -122,6 +127,7 @@ fn run(command: Command) -> Result<()> {
                 response_time: Duration::from_millis(response_ms),
                 tail_time: Duration::from_millis(tail_ms),
                 probe_dbfs,
+                trim_leading_silence: !no_trim_leading_silence,
             };
             eprintln!("Capturing the software filter; keep other system audio silent...");
             let capture = measure_software_filter(&settings).with_context(
@@ -143,6 +149,16 @@ fn run(command: Command) -> Result<()> {
                 capture.diagnostics.peak,
                 20.0 * capture.diagnostics.peak.log10()
             );
+            if capture.diagnostics.trimmed_leading_frames > 0 {
+                println!(
+                    "Removed {} common leading-silence frames ({:.3} ms) from every matrix path.",
+                    capture.diagnostics.trimmed_leading_frames,
+                    capture.diagnostics.trimmed_leading_frames as f64 * 1000.0
+                        / capture.matrix.sample_rate() as f64
+                );
+            } else if !no_trim_leading_silence {
+                println!("No common leading digital-silence frames were found to remove.");
+            }
             if capture.diagnostics.peak >= 1.0 {
                 eprintln!(
                     "Warning: the loopback signal reached 0 dBFS; repeat with a lower --probe-dbfs if the source filter can clip."

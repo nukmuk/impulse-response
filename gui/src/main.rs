@@ -14,6 +14,7 @@ mod windows_app {
         let (lead_ms, set_lead_ms) = cx.use_state(500.0_f64);
         let (response_ms, set_response_ms) = cx.use_state(2_000.0_f64);
         let (tail_ms, set_tail_ms) = cx.use_state(250.0_f64);
+        let (trim_leading_silence, set_trim_leading_silence) = cx.use_state(true);
         let (capture_state, capture_trigger) = cx.use_mutation();
 
         let devices = match &devices_resource {
@@ -65,6 +66,7 @@ mod windows_app {
                     lead_ms,
                     response_ms,
                     tail_ms,
+                    trim_leading_silence,
                 };
                 trigger.fire(move || run_capture(request));
             }
@@ -156,6 +158,7 @@ mod windows_app {
                     GridLength::Auto,
                     GridLength::Auto,
                     GridLength::Auto,
+                    GridLength::Auto,
                 ])
                 .columns([GridLength::Star(1.0), GridLength::Star(1.0)])
                 .row_spacing(10.0)
@@ -192,6 +195,16 @@ mod windows_app {
                     .on_value_changed(set_tail_ms)
                     .grid_row(1)
                     .grid_column(1)
+                    .into(),
+                ToggleSwitch::new(trim_leading_silence)
+                    .header("Trim common leading digital silence")
+                    .on_content("On")
+                    .off_content("Off")
+                    .enabled(!busy)
+                    .on_toggled(set_trim_leading_silence)
+                    .grid_row(2)
+                    .grid_column(0)
+                    .grid_column_span(2)
                     .into(),
             ];
             layout
