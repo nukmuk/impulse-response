@@ -107,11 +107,12 @@ noise, gain, filtering, fades, or normalization.
 3. Send impulses to the virtual source with `--render-device-id` and select the final physical
    playback endpoint with `--capture-device-id`. Do not play other audio until capture finishes.
 4. Check that the command reports the intended source and destination, a nonzero peak below
-   `1.0`, the common trim applied, and writes two WAV files plus `equalizer-apo.txt` and
-   `camilladsp.yml`.
+   `1.0`, the common trim applied, and writes two WAV files plus
+   `captured-filter-equalizer-apo.txt` and `captured-filter-camilladsp.yml`.
 5. Copy the whole `captured-filter` directory under Equalizer APO's `config` directory. Disable
-   the filter that was captured, then add `Include: captured-filter\\equalizer-apo.txt` to the
-   active Equalizer APO configuration.
+   the filter that was captured, then add
+   `Include: captured-filter\\captured-filter-equalizer-apo.txt` to the active Equalizer APO
+   configuration.
 6. Open Equalizer APO's Configuration Editor and confirm that both convolution entries load
    without errors. Test at low volume first with distinct left-only and right-only audio.
 
@@ -121,8 +122,8 @@ The output directory contains:
 
 - One 32-bit floating-point multichannel WAV per input channel. Its WAV channels contain the
   responses from that input to every output.
-- `equalizer-apo.txt`, which creates virtual channels, convolves every input-to-output path, and
-  mixes the matrix back into the physical channels.
+- `<filter-name>-equalizer-apo.txt`, which creates virtual channels, convolves every
+  input-to-output path, and mixes the matrix back into the physical channels.
 
 Place the entire output directory under Equalizer APO's configuration directory and include the
 generated file from the active configuration. Keep the WAV files next to the generated config so
@@ -133,8 +134,11 @@ filters will be applied.
 
 ## CamillaDSP output for Linux and SteamOS
 
-The same output directory also contains `camilladsp.yml`. It is a complete native PipeWire
-CamillaDSP configuration with:
+The output directory also contains `<filter-name>-camilladsp.yml`. Both generated config filenames
+use the output directory name as `<filter-name>`; for example, `--output my-speakers` writes
+`my-speakers-equalizer-apo.txt` and `my-speakers-camilladsp.yml`. Characters that are not portable
+in filenames are replaced with hyphens. The CamillaDSP file is a complete native PipeWire
+configuration with:
 
 - A `camilladsp-capture` input node with the captured input channel count.
 - The full input-to-output convolution matrix, using the same floating-point WAV files as the
@@ -146,7 +150,7 @@ Use a [CamillaDSP build with the native PipeWire backend][camilladsp-releases], 
 that directory:
 
 ```bash
-camilladsp camilladsp.yml
+camilladsp my-speakers-camilladsp.yml
 ```
 
 Route application audio into `camilladsp-capture` and route `camilladsp-playback` to the physical
@@ -155,7 +159,7 @@ such as Helvum or qpwgraph. The generated sample rate must match the PipeWire gr
 output. CamillaDSP will validate the configuration without starting audio when run with:
 
 ```bash
-camilladsp --check camilladsp.yml
+camilladsp --check my-speakers-camilladsp.yml
 ```
 
 The generated `chunksize` follows CamillaDSP's starting-point recommendation for the captured

@@ -238,7 +238,7 @@ mod windows_app {
                     .on_click(capture),
                 status,
                 text_block(
-                    "After capture: disable the original correction/routing app before testing its convolution replacement. Use equalizer-apo.txt on Windows, or copy the bundle to Linux/SteamOS and start CamillaDSP with camilladsp.yml.",
+                    "After capture: disable the original correction/routing app before testing its convolution replacement. The config filenames include the output directory name. Use the Equalizer APO file on Windows, or copy the bundle to Linux/SteamOS and use the CamillaDSP file.",
                 )
                 .wrap()
                 .opacity(0.72),

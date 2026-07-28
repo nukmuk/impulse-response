@@ -27,13 +27,15 @@ pub fn export_capture_bundle(
     let file_names = matrix_wav_file_names(matrix);
     let wav_paths = write_matrix_wavs(output_directory, matrix, &file_names)?;
 
-    let equalizer_apo_config_path = output_directory.join("equalizer-apo.txt");
+    let bundle_name = bundle_name(output_directory);
+    let equalizer_apo_config_path =
+        output_directory.join(format!("{bundle_name}-equalizer-apo.txt"));
     fs::write(
         &equalizer_apo_config_path,
         render_equalizer_apo_config(matrix, &file_names)?,
     )?;
 
-    let camilladsp_config_path = output_directory.join("camilladsp.yml");
+    let camilladsp_config_path = output_directory.join(format!("{bundle_name}-camilladsp.yml"));
     fs::write(
         &camilladsp_config_path,
         render_camilladsp_config(matrix, &file_names)?,
@@ -55,7 +57,10 @@ pub fn export_equalizer_apo_bundle(
     let file_names = matrix_wav_file_names(matrix);
     let wav_paths = write_matrix_wavs(output_directory, matrix, &file_names)?;
 
-    let config_path = output_directory.join("equalizer-apo.txt");
+    let config_path = output_directory.join(format!(
+        "{}-equalizer-apo.txt",
+        bundle_name(output_directory)
+    ));
     fs::write(
         &config_path,
         render_equalizer_apo_config(matrix, &file_names)?,
@@ -76,7 +81,8 @@ pub fn export_camilladsp_bundle(
     let file_names = matrix_wav_file_names(matrix);
     let wav_paths = write_matrix_wavs(output_directory, matrix, &file_names)?;
 
-    let config_path = output_directory.join("camilladsp.yml");
+    let config_path =
+        output_directory.join(format!("{}-camilladsp.yml", bundle_name(output_directory)));
     fs::write(&config_path, render_camilladsp_config(matrix, &file_names)?)?;
 
     Ok(ExportedBundle {
@@ -287,6 +293,28 @@ fn matrix_wav_file_names(matrix: &ImpulseMatrix) -> Vec<String> {
         .collect()
 }
 
+fn bundle_name(output_directory: &Path) -> String {
+    let name = output_directory
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(safe_name)
+        .unwrap_or_default();
+    let name = name
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    if name
+        .chars()
+        .any(|character| character.is_ascii_alphanumeric())
+    {
+        name
+    } else {
+        "captured-filter".into()
+    }
+}
+
 fn write_matrix_wavs(
     output_directory: &Path,
     matrix: &ImpulseMatrix,
@@ -453,6 +481,15 @@ mod tests {
     }
 
     #[test]
+    fn config_filenames_use_a_portable_output_directory_name() {
+        assert_eq!(
+            bundle_name(Path::new("exports/My Speakers (48 kHz)")),
+            "My-Speakers-48-kHz"
+        );
+        assert_eq!(bundle_name(Path::new(".")), "captured-filter");
+    }
+
+    #[test]
     fn writes_float_wavs_with_one_channel_per_output() {
         let unique = format!(
             "rust-ir-export-test-{}-{}",
@@ -462,9 +499,13 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         );
-        let directory = std::env::temp_dir().join(unique);
+        let directory = std::env::temp_dir().join(&unique);
         let bundle = export_equalizer_apo_bundle(&directory, &stereo_matrix()).unwrap();
 
+        assert_eq!(
+            bundle.config_path.file_name().unwrap(),
+            format!("{unique}-equalizer-apo.txt").as_str()
+        );
         assert_eq!(bundle.wav_paths.len(), 2);
         let reader = hound::WavReader::open(&bundle.wav_paths[0]).unwrap();
         assert_eq!(reader.spec().channels, 2);
@@ -486,9 +527,17 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         );
-        let directory = std::env::temp_dir().join(unique);
+        let directory = std::env::temp_dir().join(&unique);
         let bundle = export_capture_bundle(&directory, &stereo_matrix()).unwrap();
 
+        assert_eq!(
+            bundle.equalizer_apo_config_path.file_name().unwrap(),
+            format!("{unique}-equalizer-apo.txt").as_str()
+        );
+        assert_eq!(
+            bundle.camilladsp_config_path.file_name().unwrap(),
+            format!("{unique}-camilladsp.yml").as_str()
+        );
         assert!(bundle.equalizer_apo_config_path.exists());
         assert!(bundle.camilladsp_config_path.exists());
         assert_eq!(bundle.wav_paths.len(), 2);
