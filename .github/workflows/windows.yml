@@ -42,3 +42,76 @@ jobs:
           path: target/release/rust-impulse-response.exe
           if-no-files-found: error
           retention-days: 30
+
+  gui:
+    runs-on: windows-latest
+    env:
+      REACTOR_LOCALAPPDATA: ${{ github.workspace }}\target\reactor-localappdata
+
+    steps:
+      - name: Check out repository and Reactor dependency
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+
+      - name: Check GUI formatting
+        run: cargo fmt --manifest-path gui/Cargo.toml -- --check
+
+      - name: Download Windows Reactor runtime
+        shell: pwsh
+        run: |
+          $reactorTemp = Join-Path $env:REACTOR_LOCALAPPDATA 'windows-reactor-setup\temp'
+          New-Item -ItemType Directory -Path $reactorTemp -Force | Out-Null
+          $packages = @(
+            @{
+              Name = 'Microsoft.WindowsAppSDK.Runtime.2.1.3.nupkg'
+              Url = 'https://www.nuget.org/api/v2/package/Microsoft.WindowsAppSDK.Runtime/2.1.3'
+            },
+            @{
+              Name = 'Microsoft.Web.WebView2.1.0.4022.49.nupkg'
+              Url = 'https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.4022.49'
+            }
+          )
+          foreach ($package in $packages) {
+            $destination = Join-Path $reactorTemp $package.Name
+            curl.exe -fL --retry 5 --retry-all-errors --output $destination $package.Url
+            if ($LASTEXITCODE -ne 0) {
+              throw "Download failed: $($package.Name)"
+            }
+            tar.exe -tf $destination | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "Downloaded package is not a valid archive: $($package.Name)"
+            }
+          }
+
+      - name: Run GUI Clippy
+        env:
+          LOCALAPPDATA: ${{ env.REACTOR_LOCALAPPDATA }}
+        run: cargo clippy --manifest-path gui/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Run GUI tests
+        env:
+          LOCALAPPDATA: ${{ env.REACTOR_LOCALAPPDATA }}
+        run: cargo test --manifest-path gui/Cargo.toml --locked --all-targets
+
+      - name: Build self-contained GUI
+        env:
+          LOCALAPPDATA: ${{ env.REACTOR_LOCALAPPDATA }}
+        run: cargo build --manifest-path gui/Cargo.toml --locked --release
+
+      - name: Package self-contained GUI
+        shell: pwsh
+        run: ./gui/package.ps1 -Profile release
+
+      - name: Upload Windows GUI bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-impulse-response-gui-windows-x86_64-${{ github.sha }}
+          path: gui/target/package-release/**
+          if-no-files-found: error
+          retention-days: 30

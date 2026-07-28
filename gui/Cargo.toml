@@ -1,0 +1,14 @@
+[package]
+name = "rust-impulse-response-gui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rust-impulse-response = { path = ".." }
+
+[target.'cfg(windows)'.dependencies]
+windows-reactor = { path = "../vendor/windows-rs/crates/libs/reactor" }
+
+[target.'cfg(windows)'.build-dependencies]
+windows-reactor-setup = { path = "../vendor/windows-rs/crates/libs/reactor-setup" }

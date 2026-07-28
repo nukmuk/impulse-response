@@ -20,11 +20,32 @@ enum Command {
     /// List active Windows playback endpoints.
     Devices,
 
+    /// Generate a one-second mono full-scale Dirac impulse WAV without dithering.
+    Impulse {
+        /// Output WAV path.
+        #[arg(short, long, default_value = "dirac.wav")]
+        output: PathBuf,
+
+        /// WAV sample rate in Hz.
+        #[arg(long, default_value_t = 48_000)]
+        sample_rate: u32,
+
+        /// Integer PCM bit depth: 16, 24, or 32.
+        #[arg(long, default_value_t = rust_impulse_response::PcmBitDepth::Pcm24)]
+        bit_depth: rust_impulse_response::PcmBitDepth,
+    },
+
     /// Play sample-exact impulses, capture loopback, and export an APO bundle.
     Capture {
-        /// WASAPI endpoint ID. The default console playback endpoint is used if omitted.
+        /// Playback endpoint that receives the impulses. The default endpoint is used if omitted.
+        #[arg(long, visible_alias = "device-id")]
+        render_device_id: Option<String>,
+
+        /// Playback endpoint whose processed output is captured via WASAPI loopback.
+        ///
+        /// If omitted, loopback is captured from the render endpoint.
         #[arg(long)]
-        device_id: Option<String>,
+        capture_device_id: Option<String>,
 
         /// Directory for the WAV matrix and equalizer-apo.txt.
         #[arg(short, long, default_value = "captured-filter")]
@@ -45,6 +66,10 @@ enum Command {
         /// Silence after the final response window.
         #[arg(long, default_value_t = 250)]
         tail_ms: u64,
+
+        /// Preserve common leading digital silence instead of trimming it.
+        #[arg(long)]
+        no_trim_leading_silence: bool,
     },
 }
 
@@ -61,6 +86,20 @@ fn run(command: Command) -> Result<()> {
     };
 
     match command {
+        Command::Impulse {
+            output,
+            sample_rate,
+            bit_depth,
+        } => {
+            rust_impulse_response::write_dirac_wav(&output, sample_rate, bit_depth)
+                .with_context(|| format!("could not write {}", output.display()))?;
+            println!(
+                "Wrote {}: 1 second, mono, {} Hz, {}-bit integer PCM; sample 0 is positive full scale and all remaining samples are exactly zero.",
+                output.display(),
+                sample_rate,
+                bit_depth
+            );
+        }
         Command::Devices => {
             let devices = list_render_devices().context("could not enumerate playback devices")?;
             for device in devices {
@@ -72,19 +111,23 @@ fn run(command: Command) -> Result<()> {
             }
         }
         Command::Capture {
-            device_id,
+            render_device_id,
+            capture_device_id,
             output,
             probe_dbfs,
             lead_ms,
             response_ms,
             tail_ms,
+            no_trim_leading_silence,
         } => {
             let settings = LiveCaptureSettings {
-                device_id,
+                render_device_id,
+                capture_device_id,
                 lead_time: Duration::from_millis(lead_ms),
                 response_time: Duration::from_millis(response_ms),
                 tail_time: Duration::from_millis(tail_ms),
                 probe_dbfs,
+                trim_leading_silence: !no_trim_leading_silence,
             };
             eprintln!("Capturing the software filter; keep other system audio silent...");
             let capture = measure_software_filter(&settings).with_context(
@@ -94,16 +137,28 @@ fn run(command: Command) -> Result<()> {
                 .with_context(|| format!("could not export to {}", output.display()))?;
 
             println!(
-                "Captured {} at {} Hz with {} channels.",
-                capture.device.name,
+                "Rendered {} input channels to {} and captured {} output channels from {} at {} Hz.",
+                capture.matrix.input_channels().len(),
+                capture.render_device.name,
+                capture.matrix.output_channels().len(),
+                capture.capture_device.name,
                 capture.matrix.sample_rate(),
-                capture.matrix.output_channels().len()
             );
             println!(
                 "Peak: {:.3} ({:.2} dBFS)",
                 capture.diagnostics.peak,
                 20.0 * capture.diagnostics.peak.log10()
             );
+            if capture.diagnostics.trimmed_leading_frames > 0 {
+                println!(
+                    "Removed {} common leading-silence frames ({:.3} ms) from every matrix path.",
+                    capture.diagnostics.trimmed_leading_frames,
+                    capture.diagnostics.trimmed_leading_frames as f64 * 1000.0
+                        / capture.matrix.sample_rate() as f64
+                );
+            } else if !no_trim_leading_silence {
+                println!("No common leading digital-silence frames were found to remove.");
+            }
             if capture.diagnostics.peak >= 1.0 {
                 eprintln!(
                     "Warning: the loopback signal reached 0 dBFS; repeat with a lower --probe-dbfs if the source filter can clip."
@@ -120,5 +175,16 @@ fn run(command: Command) -> Result<()> {
 
 #[cfg(not(windows))]
 fn run(_command: Command) -> Result<()> {
-    anyhow::bail!("live software-filter capture currently requires Windows")
+    match _command {
+        Command::Impulse {
+            output,
+            sample_rate,
+            bit_depth,
+        } => {
+            rust_impulse_response::write_dirac_wav(&output, sample_rate, bit_depth)
+                .with_context(|| format!("could not write {}", output.display()))?;
+            Ok(())
+        }
+        _ => anyhow::bail!("live software-filter capture currently requires Windows"),
+    }
 }

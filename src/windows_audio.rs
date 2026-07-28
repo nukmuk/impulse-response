@@ -23,21 +23,25 @@ pub struct RenderDevice {
 
 #[derive(Clone, Debug)]
 pub struct LiveCaptureSettings {
-    pub device_id: Option<String>,
+    pub render_device_id: Option<String>,
+    pub capture_device_id: Option<String>,
     pub lead_time: Duration,
     pub response_time: Duration,
     pub tail_time: Duration,
     pub probe_dbfs: f32,
+    pub trim_leading_silence: bool,
 }
 
 impl Default for LiveCaptureSettings {
     fn default() -> Self {
         Self {
-            device_id: None,
+            render_device_id: None,
+            capture_device_id: None,
             lead_time: Duration::from_millis(500),
             response_time: Duration::from_secs(2),
             tail_time: Duration::from_millis(250),
             probe_dbfs: -24.0,
+            trim_leading_silence: true,
         }
     }
 }
@@ -48,11 +52,13 @@ pub struct CaptureDiagnostics {
     pub peak: f32,
     pub render_clock_origin_qpc: f64,
     pub clock_observations: usize,
+    pub trimmed_leading_frames: usize,
 }
 
 #[derive(Clone, Debug)]
 pub struct LiveCapture {
-    pub device: RenderDevice,
+    pub render_device: RenderDevice,
+    pub capture_device: RenderDevice,
     pub schedule: CaptureSchedule,
     pub matrix: ImpulseMatrix,
     pub diagnostics: CaptureDiagnostics,
@@ -83,32 +89,58 @@ pub fn list_render_devices() -> Result<Vec<RenderDevice>> {
 pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCapture> {
     initialize_com()?;
     let enumerator = backend(DeviceEnumerator::new())?;
-    let device = match &settings.device_id {
+    let render_device = match &settings.render_device_id {
         Some(id) => backend(enumerator.get_device(id))?,
         None => backend(enumerator.get_default_device(&Direction::Render))?,
     };
     let default_id = backend(enumerator.get_default_device(&Direction::Render))?
         .get_id()
         .map_err(audio_error)?;
-    let device_description = describe_device(&device, &default_id)?;
+    let render_description = describe_device(&render_device, &default_id)?;
+    let capture_device = match &settings.capture_device_id {
+        Some(id) => backend(enumerator.get_device(id))?,
+        None => backend(enumerator.get_device(&render_description.id))?,
+    };
+    let capture_description = describe_device(&capture_device, &default_id)?;
 
-    let mut render_audio_client = backend(device.get_iaudioclient())?;
-    let mix_format = backend(render_audio_client.get_mixformat())?;
-    let sample_rate = mix_format.get_samplespersec();
-    let channel_count = usize::from(mix_format.get_nchannels());
-    let channel_mask = mix_format.get_dwchannelmask();
-    let desired_format = WaveFormat::new(
+    let mut render_audio_client = backend(render_device.get_iaudioclient())?;
+    let render_mix_format = backend(render_audio_client.get_mixformat())?;
+    let sample_rate = render_mix_format.get_samplespersec();
+    let input_channel_count = usize::from(render_mix_format.get_nchannels());
+    let input_channel_mask = render_mix_format.get_dwchannelmask();
+    let mut capture_audio_client = backend(capture_device.get_iaudioclient())?;
+    let capture_mix_format = backend(capture_audio_client.get_mixformat())?;
+    let capture_sample_rate = capture_mix_format.get_samplespersec();
+    let output_channel_count = usize::from(capture_mix_format.get_nchannels());
+    let output_channel_mask = capture_mix_format.get_dwchannelmask();
+
+    ensure_matching_sample_rates(
+        &render_description,
+        sample_rate,
+        &capture_description,
+        capture_sample_rate,
+    )?;
+
+    let render_format = WaveFormat::new(
         32,
         32,
         &SampleType::Float,
         sample_rate as usize,
-        channel_count,
-        (channel_mask != 0).then_some(channel_mask),
+        input_channel_count,
+        (input_channel_mask != 0).then_some(input_channel_mask),
+    );
+    let capture_format = WaveFormat::new(
+        32,
+        32,
+        &SampleType::Float,
+        capture_sample_rate as usize,
+        output_channel_count,
+        (output_channel_mask != 0).then_some(output_channel_mask),
     );
 
     let schedule = CaptureSchedule::new(
         sample_rate,
-        channel_count,
+        input_channel_count,
         duration_to_frames(settings.lead_time, sample_rate)?,
         duration_to_frames(settings.response_time, sample_rate)?,
         duration_to_frames(settings.tail_time, sample_rate)?,
@@ -117,7 +149,6 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
     let stimulus = schedule.render_stimulus();
     let stimulus_bytes = floats_to_bytes(&stimulus);
 
-    let mut capture_audio_client = backend(device.get_iaudioclient())?;
     let (render_default_period, _) = backend(render_audio_client.get_device_period())?;
     let (capture_default_period, _) = backend(capture_audio_client.get_device_period())?;
     let render_mode = StreamMode::PollingShared {
@@ -129,12 +160,12 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
         buffer_duration_hns: capture_default_period,
     };
     backend(render_audio_client.initialize_client(
-        &desired_format,
+        &render_format,
         &Direction::Render,
         &render_mode,
     ))?;
     backend(capture_audio_client.initialize_client(
-        &desired_format,
+        &capture_format,
         &Direction::Capture,
         &capture_mode,
     ))?;
@@ -148,7 +179,7 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
     let initial_frames = render_buffer_frames.min(schedule.total_frames());
     backend(render_client.write_to_device(
         initial_frames,
-        &stimulus_bytes[..initial_frames * channel_count * size_of::<f32>()],
+        &stimulus_bytes[..initial_frames * input_channel_count * size_of::<f32>()],
         None,
     ))?;
     let mut submitted_frames = initial_frames;
@@ -184,7 +215,7 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
 
             drain_capture_packets(
                 &capture_client,
-                channel_count,
+                output_channel_count,
                 &mut packets,
                 &mut first_capture_packet,
             )?;
@@ -194,8 +225,9 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
                     backend(render_audio_client.get_available_space_in_frames())? as usize;
                 let frames = available.min(schedule.total_frames() - submitted_frames);
                 if frames > 0 {
-                    let byte_start = submitted_frames * channel_count * size_of::<f32>();
-                    let byte_end = (submitted_frames + frames) * channel_count * size_of::<f32>();
+                    let byte_start = submitted_frames * input_channel_count * size_of::<f32>();
+                    let byte_end =
+                        (submitted_frames + frames) * input_channel_count * size_of::<f32>();
                     backend(render_client.write_to_device(
                         frames,
                         &stimulus_bytes[byte_start..byte_end],
@@ -208,7 +240,7 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
                 if finished.elapsed() >= Duration::from_millis(100) {
                     drain_capture_packets(
                         &capture_client,
-                        channel_count,
+                        output_channel_count,
                         &mut packets,
                         &mut first_capture_packet,
                     )?;
@@ -238,7 +270,7 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
         &packets,
         render_clock_origin_qpc,
         sample_rate,
-        channel_count,
+        output_channel_count,
         schedule.total_frames(),
     );
     let peak = captured
@@ -250,20 +282,43 @@ pub fn measure_software_filter(settings: &LiveCaptureSettings) -> Result<LiveCap
         ));
     }
 
-    let labels = channel_labels(channel_count, channel_mask);
-    let matrix = extract_matrix(&captured, labels.clone(), labels, &schedule, 0)?;
+    let input_labels = channel_labels(input_channel_count, input_channel_mask);
+    let output_labels = channel_labels(output_channel_count, output_channel_mask);
+    let mut matrix = extract_matrix(&captured, output_labels, input_labels, &schedule, 0)?;
+    let trimmed_leading_frames = if settings.trim_leading_silence {
+        matrix.trim_common_leading_silence()
+    } else {
+        0
+    };
 
     Ok(LiveCapture {
-        device: device_description,
+        render_device: render_description,
+        capture_device: capture_description,
         schedule,
         matrix,
         diagnostics: CaptureDiagnostics {
-            captured_frames: captured.len() / channel_count,
+            captured_frames: captured.len() / output_channel_count,
             peak,
             render_clock_origin_qpc,
             clock_observations,
+            trimmed_leading_frames,
         },
     })
+}
+
+fn ensure_matching_sample_rates(
+    render_device: &RenderDevice,
+    render_sample_rate: u32,
+    capture_device: &RenderDevice,
+    capture_sample_rate: u32,
+) -> Result<()> {
+    if render_sample_rate != capture_sample_rate {
+        return Err(CaptureError::InvalidSettings(format!(
+            "the render endpoint {} uses {} Hz, but the loopback endpoint {} uses {} Hz; set both Windows endpoints to the same sample rate",
+            render_device.name, render_sample_rate, capture_device.name, capture_sample_rate
+        )));
+    }
+    Ok(())
 }
 
 fn drain_capture_packets(
@@ -457,6 +512,17 @@ fn audio_error(error: wasapi::WasapiError) -> CaptureError {
 mod tests {
     use super::*;
 
+    fn device(name: &str, sample_rate: u32) -> RenderDevice {
+        RenderDevice {
+            id: name.into(),
+            name: name.into(),
+            is_default: false,
+            sample_rate,
+            channels: 2,
+            channel_mask: 0x3,
+        }
+    }
+
     #[test]
     fn packet_timestamps_map_to_exact_render_frames() {
         let origin = 100_000_000.0;
@@ -511,5 +577,18 @@ mod tests {
     fn channel_labels_follow_windows_speaker_mask_order() {
         assert_eq!(channel_labels(2, 0x3), ["L", "R"]);
         assert_eq!(channel_labels(6, 0x3f), ["L", "R", "C", "LFE", "RL", "RR"]);
+    }
+
+    #[test]
+    fn cross_endpoint_capture_requires_matching_sample_rates() {
+        let render = device("Virtual Audio Device", 48_000);
+        let capture = device("LCD TV", 44_100);
+        let error = ensure_matching_sample_rates(&render, 48_000, &capture, 44_100)
+            .expect_err("mismatched rates must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid capture settings: the render endpoint Virtual Audio Device uses 48000 Hz, but the loopback endpoint LCD TV uses 44100 Hz; set both Windows endpoints to the same sample rate"
+        );
     }
 }
