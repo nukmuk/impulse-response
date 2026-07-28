@@ -2,7 +2,7 @@
 
 Windows CLI and reusable Rust library for capturing a linear software filter from a WASAPI
 playback endpoint and exporting it as a full channel-to-channel convolution matrix for
-Equalizer APO.
+Equalizer APO on Windows and CamillaDSP on Linux or SteamOS.
 
 The project measures software processing only. It does not use a microphone and is not a room
 or loudspeaker measurement tool.
@@ -107,7 +107,8 @@ noise, gain, filtering, fades, or normalization.
 3. Send impulses to the virtual source with `--render-device-id` and select the final physical
    playback endpoint with `--capture-device-id`. Do not play other audio until capture finishes.
 4. Check that the command reports the intended source and destination, a nonzero peak below
-   `1.0`, the common trim applied, and writes two WAV files plus `equalizer-apo.txt`.
+   `1.0`, the common trim applied, and writes two WAV files plus `equalizer-apo.txt` and
+   `camilladsp.yml`.
 5. Copy the whole `captured-filter` directory under Equalizer APO's `config` directory. Disable
    the filter that was captured, then add `Include: captured-filter\\equalizer-apo.txt` to the
    active Equalizer APO configuration.
@@ -130,10 +131,43 @@ its relative paths remain valid. The endpoint sample rate must equal the WAV sam
 Disable the original captured filter before enabling its convolution replacement; otherwise both
 filters will be applied.
 
+## CamillaDSP output for Linux and SteamOS
+
+The same output directory also contains `camilladsp.yml`. It is a complete native PipeWire
+CamillaDSP configuration with:
+
+- A `camilladsp-capture` input node with the captured input channel count.
+- The full input-to-output convolution matrix, using the same floating-point WAV files as the
+  Equalizer APO export.
+- A `camilladsp-playback` output node with the captured output channel count.
+
+Copy the entire directory to the Linux or SteamOS machine so the relative WAV paths remain valid.
+Use a [CamillaDSP build with the native PipeWire backend][camilladsp-releases], then run this from
+that directory:
+
+```bash
+camilladsp camilladsp.yml
+```
+
+Route application audio into `camilladsp-capture` and route `camilladsp-playback` to the physical
+audio output. This can be done with [PipeWire routing rules][camilladsp-pipewire] or a patchbay
+such as Helvum or qpwgraph. The generated sample rate must match the PipeWire graph and physical
+output. CamillaDSP will validate the configuration without starting audio when run with:
+
+```bash
+camilladsp --check camilladsp.yml
+```
+
+The generated `chunksize` follows CamillaDSP's starting-point recommendation for the captured
+sample rate. It can be tuned later to trade latency against CPU use.
+
+[camilladsp-releases]: https://github.com/HEnquist/camilladsp/releases
+[camilladsp-pipewire]: https://github.com/HEnquist/camilladsp/blob/master/backend_pipewire.md
+
 ## Experimental Windows GUI
 
 The `gui` directory contains a WinUI 3 frontend built with Windows Reactor. It uses the same
-capture and Equalizer APO export library as the CLI. Reactor is currently pinned as a Git
+capture and multi-format export library as the CLI. Reactor is currently pinned as a Git
 submodule so GUI builds remain reproducible while that project is experimental.
 
 Clone and build it with:

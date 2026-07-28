@@ -215,7 +215,7 @@ mod windows_app {
                 title("Impulse Response Capture")
                     .heading_level(AutomationHeadingLevel::Level1),
                 text_block(
-                    "Capture a sample-accurate software-filter matrix and export an Equalizer APO bundle.",
+                    "Capture a sample-accurate software-filter matrix and export Equalizer APO and CamillaDSP bundles.",
                 )
                 .wrap()
                 .opacity(0.72),
@@ -238,7 +238,7 @@ mod windows_app {
                     .on_click(capture),
                 status,
                 text_block(
-                    "After capture: disable the original correction/routing app before testing its convolution replacement. Copy the whole output directory under Equalizer APO's config directory and include equalizer-apo.txt.",
+                    "After capture: disable the original correction/routing app before testing its convolution replacement. Use equalizer-apo.txt on Windows, or copy the bundle to Linux/SteamOS and start CamillaDSP with camilladsp.yml.",
                 )
                 .wrap()
                 .opacity(0.72),

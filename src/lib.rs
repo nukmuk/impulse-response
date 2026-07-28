@@ -13,7 +13,10 @@ mod schedule;
 mod windows_audio;
 
 pub use error::{CaptureError, Result};
-pub use export::{ExportedBundle, export_equalizer_apo_bundle, render_equalizer_apo_config};
+pub use export::{
+    ExportedBundle, ExportedCaptureBundle, export_camilladsp_bundle, export_capture_bundle,
+    export_equalizer_apo_bundle, render_camilladsp_config, render_equalizer_apo_config,
+};
 pub use impulse::{PcmBitDepth, write_dirac_wav};
 pub use matrix::ImpulseMatrix;
 pub use schedule::{CaptureSchedule, extract_matrix};
