@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "rust-impulse-response",
     version,
-    about = "Capture a Windows software filter as an Equalizer APO convolution matrix"
+    about = "Capture a Windows software filter as a portable convolution matrix"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -35,7 +35,7 @@ enum Command {
         bit_depth: rust_impulse_response::PcmBitDepth,
     },
 
-    /// Play sample-exact impulses, capture loopback, and export an APO bundle.
+    /// Play sample-exact impulses, capture loopback, and export a convolution bundle.
     Capture {
         /// Playback endpoint that receives the impulses. The default endpoint is used if omitted.
         #[arg(long, visible_alias = "device-id")]
@@ -47,7 +47,7 @@ enum Command {
         #[arg(long)]
         capture_device_id: Option<String>,
 
-        /// Directory for the WAV matrix and equalizer-apo.txt.
+        /// Directory for the WAV matrix, Equalizer APO config, and CamillaDSP config.
         #[arg(short, long, default_value = "captured-filter")]
         output: PathBuf,
 
@@ -81,8 +81,7 @@ fn main() -> Result<()> {
 #[cfg(windows)]
 fn run(command: Command) -> Result<()> {
     use rust_impulse_response::{
-        LiveCaptureSettings, export_equalizer_apo_bundle, list_render_devices,
-        measure_software_filter,
+        LiveCaptureSettings, export_capture_bundle, list_render_devices, measure_software_filter,
     };
 
     match command {
@@ -133,7 +132,7 @@ fn run(command: Command) -> Result<()> {
             let capture = measure_software_filter(&settings).with_context(
                 || "capture failed; no files were exported because timing integrity is required",
             )?;
-            let bundle = export_equalizer_apo_bundle(&output, &capture.matrix)
+            let bundle = export_capture_bundle(&output, &capture.matrix)
                 .with_context(|| format!("could not export to {}", output.display()))?;
 
             println!(
@@ -164,7 +163,14 @@ fn run(command: Command) -> Result<()> {
                     "Warning: the loopback signal reached 0 dBFS; repeat with a lower --probe-dbfs if the source filter can clip."
                 );
             }
-            println!("Equalizer APO config: {}", bundle.config_path.display());
+            println!(
+                "Equalizer APO config: {}",
+                bundle.equalizer_apo_config_path.display()
+            );
+            println!(
+                "CamillaDSP config: {}",
+                bundle.camilladsp_config_path.display()
+            );
             for wav in bundle.wav_paths {
                 println!("Impulse matrix WAV: {}", wav.display());
             }

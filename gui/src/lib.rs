@@ -3,7 +3,7 @@ use std::time::Duration;
 
 #[cfg(windows)]
 use rust_impulse_response::{
-    LiveCaptureSettings, export_equalizer_apo_bundle, list_render_devices, measure_software_filter,
+    LiveCaptureSettings, export_capture_bundle, list_render_devices, measure_software_filter,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -131,8 +131,7 @@ pub fn run_capture(request: CaptureRequest) -> Result<CaptureSummary, String> {
         trim_leading_silence: request.trim_leading_silence,
     };
     let capture = measure_software_filter(&settings).map_err(|error| error.to_string())?;
-    export_equalizer_apo_bundle(&output_directory, &capture.matrix)
-        .map_err(|error| error.to_string())?;
+    export_capture_bundle(&output_directory, &capture.matrix).map_err(|error| error.to_string())?;
 
     Ok(CaptureSummary {
         render_device_name: capture.render_device.name,
