@@ -3,6 +3,7 @@ name: Windows build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -115,3 +116,37 @@ jobs:
           path: gui/target/package-release/**
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    # Publish a permanent GitHub Release when a version tag (e.g. v0.1.0) is pushed.
+    # Workflow artifacts expire after 30 days; release assets do not.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, gui]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+
+      - name: Prepare release assets
+        run: |
+          cd dist
+          cp rust-impulse-response-windows-x86_64-${{ github.sha }}/rust-impulse-response.exe \
+            ../rust-impulse-response-${{ github.ref_name }}-windows-x86_64.exe
+          (cd rust-impulse-response-gui-windows-x86_64-${{ github.sha }} && \
+            zip -r ../../rust-impulse-response-gui-${{ github.ref_name }}-windows-x86_64.zip .)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            rust-impulse-response-${{ github.ref_name }}-windows-x86_64.exe \
+            rust-impulse-response-gui-${{ github.ref_name }}-windows-x86_64.zip
