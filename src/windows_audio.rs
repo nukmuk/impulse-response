@@ -483,9 +483,10 @@ fn floats_to_bytes(samples: &[f32]) -> Vec<u8> {
 }
 
 fn bytes_to_floats(bytes: &[u8]) -> Vec<f32> {
-    bytes
-        .chunks_exact(size_of::<f32>())
-        .map(|chunk| f32::from_ne_bytes(chunk.try_into().expect("four-byte chunk")))
+    let (chunks, _remainder) = bytes.as_chunks::<{ size_of::<f32>() }>();
+    chunks
+        .iter()
+        .map(|chunk| f32::from_ne_bytes(*chunk))
         .collect()
 }
 
