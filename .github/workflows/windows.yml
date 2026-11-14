@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned so builds of unchanged code stay reproducible. Rust 1.100 added
+  # new Clippy lints and changed Cargo's build-script output layout, which
+  # breaks the Windows Reactor runtime copy. Bump deliberately.
+  RUST_TOOLCHAIN: 1.99.0
+
 jobs:
   build:
     runs-on: windows-latest
@@ -19,10 +25,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install stable Rust
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
-          rustup default stable
+          rustup toolchain install ${{ env.RUST_TOOLCHAIN }} --profile minimal --component clippy,rustfmt
+          rustup default ${{ env.RUST_TOOLCHAIN }}
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -55,10 +61,10 @@ jobs:
         with:
           submodules: true
 
-      - name: Install stable Rust
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
-          rustup default stable
+          rustup toolchain install ${{ env.RUST_TOOLCHAIN }} --profile minimal --component clippy,rustfmt
+          rustup default ${{ env.RUST_TOOLCHAIN }}
 
       - name: Check GUI formatting
         run: cargo fmt --manifest-path gui/Cargo.toml -- --check
